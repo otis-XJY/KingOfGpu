@@ -44,14 +44,12 @@ def _gpu_status_text() -> str:
     return "\n".join(lines)
 
 
-def send_text(config: FeishuConfig, text: str) -> None:
-    text = (
-        "📨 KingOfGpu 通知\n\n"
-        "📌 事件信息\n"
-        f"{text}\n\n"
-        "━━━━━━━━━━━━━━\n"
-        f"{_gpu_status_text()}"
-    )
+def send_text(config: FeishuConfig, text: str, *, include_gpu_status: bool = True) -> None:
+    """Send a Feishu text message, optionally appending the current GPU state."""
+
+    text = "📨 KingOfGpu 通知\n\n📌 事件信息\n" + text
+    if include_gpu_status:
+        text += f"\n\n━━━━━━━━━━━━━━\n{_gpu_status_text()}"
     payload: dict[str, object] = {
         "msg_type": "text",
         "content": {"text": text},
