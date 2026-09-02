@@ -1,0 +1,20 @@
+{
+  "feishu": {
+    "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/REPLACE_ME",
+    "secret": "",
+    "at_all": false
+  },
+  "occupier_python": "/home/xujunyi/anaconda3/envs/dubins/bin/python",
+  "min_free_mib": 30720,
+  "reserve_mib": 512,
+  "poll_seconds": 15,
+  "released_poll_seconds": 60,
+  "max_gpus": 1,
+  "log_file": "logs/kingofgpu.log",
+  "state_file": "run/state.json",
+  "release_on_new_process": true,
+  "release_bind_user": "xujunyi",
+  "bind_wait_seconds": 600,
+  "startup_grace_seconds": 20,
+  "occupier_start_timeout_seconds": 90
+}
