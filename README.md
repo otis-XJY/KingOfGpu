@@ -149,12 +149,13 @@ python your_train.py
 ```bash
 tmux new-session -d -s my-training \
   'cd /你的项目目录 && mkdir -p logs && \
-  python3 -m kingofgpu --config /home/xujunyi/KingOfGpu/config.json \
+  PYTHONPATH=/home/xujunyi/KingOfGpu python3 -m kingofgpu \
+    --config /home/xujunyi/KingOfGpu/config.json \
     notify-run --name my-training -- bash pipeline.sh \
     > logs/my-training.log 2>&1'
 ```
 
-`--config` 必须显式指向 KingOfGpu 的私密 `config.json`；不要将 webhook 或 secret 复制到其他项目。`--name` 可省略，此时通知会使用脚本名或命令名。
+`PYTHONPATH` 指向 KingOfGpu 仓库，使未安装该包的其他项目也能调用它。`--config` 必须显式指向 KingOfGpu 的私密 `config.json`；不要将 webhook 或 secret 复制到其他项目。`--name` 可省略，此时通知会使用脚本名或命令名。
 
 任务以原样参数启动，标准输出和错误输出会保留在当前终端（上例重定向至日志文件）。零退出码会发送“完成”通知，非零退出码会发送“失败”通知；tmux 会话中的任务收到 `SIGINT` 或 `SIGTERM` 时，会转发信号给任务并发送“中断”通知。飞书网络故障只会写入标准错误，绝不会覆盖原任务退出码。
 
