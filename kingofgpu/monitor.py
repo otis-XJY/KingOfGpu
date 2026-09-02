@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import Config
-from .feishu import send_text
+from .gpu_notify import send_gpu_text
 from .gpu import ComputeProcess, Gpu, NvidiaSmiError, list_compute_processes, list_gpus, process_user
 
 
@@ -177,7 +177,7 @@ class Monitor:
 
     def notify(self, text: str) -> None:
         try:
-            send_text(self.config.feishu, text)
+            send_gpu_text(self.config.feishu, text)
             self.logger.info("Feishu notification sent")
         except Exception:
             self.logger.exception("Feishu notification failed")

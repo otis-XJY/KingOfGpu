@@ -1,18 +1,18 @@
 # KingOfGpu 使用说明
 
-KingOfGpu 会寻找剩余显存至少 30 GiB 的 GPU，用本项目自己的 CUDA 进程占住可用显存，并通过飞书通知你 GPU 编号。你收到通知后，使用本机命令释放 KingOfGpu 的占用器，再启动自己的真实代码。
+KingOfGpu 会寻找剩余显存至少 30 GiB 的 GPU，用本项目自己的 CUDA 进程占住可用显存，并通过 GPU 专用飞书机器人通知你 GPU 编号。你收到通知后，使用本机命令释放 KingOfGpu 的占用器，再启动自己的真实代码。
 
 项目不会停止、暂停或修改服务器上其他用户的程序。它只会停止自己启动的 `kingofgpu.occupier` 进程。
 
 监控器本身可以使用 base Python 运行；占用器使用配置中的 CUDA Python 环境。当前服务器默认配置为 `/home/xujunyi/anaconda3/envs/dubins/bin/python`，该环境已验证可用 PyTorch 和 CUDA。
 
-## 一、首次配置飞书
+## 一、首次配置 GPU 飞书机器人
 
 飞书自定义机器人只能向所在群发送消息，不能接收命令，因此释放操作使用服务器终端执行。官方文档：
 
 - https://open.feishu.cn/document/ukTMukTMukTM/ucTM5YjL3ETO24yNxkjN
 
-在飞书群中添加“自定义机器人”，开启“签名校验”，复制 Webhook URL 和 Secret，然后编辑配置：
+在 GPU 调度群中添加“自定义机器人”，开启“签名校验”，复制 Webhook URL 和 Secret，然后编辑 GPU 配置：
 
 ```bash
 cd /home/xujunyi/KingOfGpu
@@ -142,22 +142,39 @@ python your_train.py
 
 如果自己的程序也需要长期运行，按 `Ctrl-b`、`d` 脱离 tmux。此时不要关闭 `kingofgpu` 监控会话，它会继续寻找下一张符合条件的 GPU。
 
-## 跨项目任务完成飞书通知
+## 跨项目长任务通知（独立机器人）
 
-在任何项目中，可用 `notify-run` 包装长时间运行的流水线。它不会把完整命令行或参数发送到飞书，因此不会意外暴露令牌等敏感参数；飞书消息只包含任务名、结果、耗时与退出码。
+任务通知与 GPU 占用使用**两个不同的飞书机器人**。在任务通知群中创建新的“自定义机器人”，开启签名校验后，创建独立私密配置：
+
+```bash
+cd /home/xujunyi/KingOfGpu
+cp task-notify.example.json task-notify.json
+vim task-notify.json
+```
+
+`task-notify.json` 必须保留 `"purpose": "task-notify"`，并只填写新机器人的 Webhook URL 和 Secret。该文件已被 `.gitignore` 排除；绝不要把它、GPU 的 `config.json`、或任一 webhook/secret 复制进其他项目。
+
+先单独测试任务机器人：
+
+```bash
+PYTHONPATH=/home/xujunyi/KingOfGpu python3 -m kingofgpu.task_notify \
+  --config /home/xujunyi/KingOfGpu/task-notify.json test-notify
+```
+
+在任何项目中，用独立任务程序包装长时间运行的流水线。它不会把完整命令行或参数发送到飞书，因此不会意外暴露令牌等敏感参数；飞书消息只包含任务名、结果、耗时与退出码。
 
 ```bash
 tmux new-session -d -s my-training \
   'cd /你的项目目录 && mkdir -p logs && \
-  PYTHONPATH=/home/xujunyi/KingOfGpu python3 -m kingofgpu \
-    --config /home/xujunyi/KingOfGpu/config.json \
-    notify-run --name my-training -- bash pipeline.sh \
+  PYTHONPATH=/home/xujunyi/KingOfGpu python3 -m kingofgpu.task_notify \
+    --config /home/xujunyi/KingOfGpu/task-notify.json \
+    run --name my-training -- bash pipeline.sh \
     > logs/my-training.log 2>&1'
 ```
 
-`PYTHONPATH` 指向 KingOfGpu 仓库，使未安装该包的其他项目也能调用它。`--config` 必须显式指向 KingOfGpu 的私密 `config.json`；不要将 webhook 或 secret 复制到其他项目。`--name` 可省略，此时通知会使用脚本名或命令名。
+`PYTHONPATH` 指向 KingOfGpu 仓库，使未安装该包的其他项目也能调用独立任务程序。`--config` 必须显式指向私密的 `task-notify.json`；`--name` 可省略，此时通知会使用脚本名或命令名。
 
-任务以原样参数启动，标准输出和错误输出会保留在当前终端（上例重定向至日志文件）。零退出码会发送“完成”通知，非零退出码会发送“失败”通知；tmux 会话中的任务收到 `SIGINT` 或 `SIGTERM` 时，会转发信号给任务并发送“中断”通知。飞书网络故障只会写入标准错误，绝不会覆盖原任务退出码。
+任务程序不导入、不查询也不发送 GPU 状态。任务以原样参数启动，标准输出和错误输出会保留在当前终端（上例重定向至日志文件）。零退出码会发送“完成”通知，非零退出码会发送“失败”通知；tmux 会话中的任务收到 `SIGINT` 或 `SIGTERM` 时，会转发信号给任务并发送“中断”通知。飞书网络故障只会写入标准错误，绝不会覆盖原任务退出码。
 
 ## 五、再次启动和停止
 

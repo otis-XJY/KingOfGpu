@@ -1,4 +1,5 @@
 config.json
+task-notify.json
 run/*.json
 run/*.pid
 logs/*.log

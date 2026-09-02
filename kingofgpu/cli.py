@@ -11,8 +11,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from .config import Config
-from .feishu import send_text
 from .gpu import NvidiaSmiError, list_compute_processes, list_gpus, process_command, process_user
+from .gpu_notify import send_gpu_text
 from .monitor import run_monitor
 
 
@@ -257,7 +257,7 @@ def release(args: argparse.Namespace) -> int:
 
 def test_notify(args: argparse.Namespace) -> int:
     config = _config(args)
-    send_text(
+    send_gpu_text(
         config.feishu,
         "✅ 飞书通知测试成功\n\n"
         "🛠️ 释放指定 GPU：\n"
@@ -269,96 +269,6 @@ def test_notify(args: argparse.Namespace) -> int:
     )
     print("sent")
     return 0
-
-
-def _task_name(command: list[str], explicit_name: str | None) -> str:
-    if explicit_name:
-        return explicit_name
-    if len(command) > 1 and Path(command[0]).name in {"bash", "sh"}:
-        return Path(command[1]).name
-    return Path(command[0]).name
-
-
-def _duration_text(seconds: float) -> str:
-    total_seconds = max(0, int(round(seconds)))
-    minutes, seconds = divmod(total_seconds, 60)
-    hours, minutes = divmod(minutes, 60)
-    if hours:
-        return f"{hours}小时{minutes}分{seconds}秒"
-    if minutes:
-        return f"{minutes}分{seconds}秒"
-    return f"{seconds}秒"
-
-
-def notify_run(args: argparse.Namespace) -> int:
-    """Run one command and report its outcome without exposing its arguments."""
-
-    command = list(args.run_command)
-    if command[:1] == ["--"]:
-        command = command[1:]
-    if not command:
-        print("notify-run 需要在 -- 后提供要执行的命令。", file=sys.stderr)
-        return 2
-
-    try:
-        config = _config(args)
-    except (OSError, ValueError) as exc:
-        print(f"无法加载飞书通知配置：{exc}", file=sys.stderr)
-        return 2
-
-    task_name = _task_name(command, args.name)
-    started_at = time.monotonic()
-    interrupted_by: int | None = None
-    process: subprocess.Popen[object] | None = None
-
-    def forward_signal(signum: int, _frame: object) -> None:
-        nonlocal interrupted_by
-        if interrupted_by is None:
-            interrupted_by = signum
-        if process is not None and process.poll() is None:
-            try:
-                os.killpg(process.pid, signum)
-            except ProcessLookupError:
-                pass
-
-    previous_handlers = {
-        signum: signal.getsignal(signum) for signum in (signal.SIGINT, signal.SIGTERM)
-    }
-    try:
-        for signum in previous_handlers:
-            signal.signal(signum, forward_signal)
-        try:
-            process = subprocess.Popen(command, start_new_session=True)
-        except OSError as exc:
-            return_code = 127
-            error = f"无法启动任务：{exc}"
-        else:
-            return_code = process.wait()
-            error = None
-    finally:
-        for signum, previous_handler in previous_handlers.items():
-            signal.signal(signum, previous_handler)
-
-    duration = _duration_text(time.monotonic() - started_at)
-    if interrupted_by is not None:
-        outcome = f"⚠️ 任务已中断（{signal.Signals(interrupted_by).name}）"
-    elif return_code == 0:
-        outcome = "✅ 任务已完成"
-    else:
-        outcome = "❌ 任务失败"
-    message = (
-        f"{outcome}\n"
-        f"🏷️ 任务：{task_name}\n"
-        f"⏱️ 耗时：{duration}\n"
-        f"🚪 退出码：{return_code}"
-    )
-    if error:
-        message += f"\n⚠️ {error}"
-    try:
-        send_text(config.feishu, message, include_gpu_status=False)
-    except Exception as exc:
-        print(f"飞书任务通知发送失败：{exc}", file=sys.stderr)
-    return return_code
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -386,20 +296,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     notify_parser = subparsers.add_parser("test-notify")
     notify_parser.set_defaults(func=test_notify)
-    notify_run_parser = subparsers.add_parser(
-        "notify-run", help="执行任务，并在结束后向飞书发送简洁通知"
-    )
-    notify_run_parser.add_argument("--name", help="飞书通知中的任务名称")
-    notify_run_parser.add_argument("run_command", nargs=argparse.REMAINDER, metavar="-- COMMAND")
-    notify_run_parser.set_defaults(func=notify_run)
     release_parser = subparsers.add_parser("release")
     release_group = release_parser.add_mutually_exclusive_group(required=True)
     release_group.add_argument("--gpu", type=int)
     release_group.add_argument("--all", action="store_true")
     release_parser.set_defaults(func=release)
     args = parser.parse_args(argv)
-    if args.command == "notify-run" and not args.config:
-        parser.error("notify-run 必须显式提供 --config /path/to/config.json")
     if args.config is None:
         args.config = str(_project_dir() / "config.json")
     if args.command == "monitor":
